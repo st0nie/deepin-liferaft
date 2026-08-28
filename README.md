@@ -29,7 +29,7 @@ Following the vim configuration model, three levels are merged into one set:
 | Level | File |
 | --- | --- |
 | Package defaults | `/usr/share/deepin-liferaft/whitelist` |
-| System administrator | `/etc/xdg/deepin-liferaft/whitelist` |
+| System administrator | `/etc/deepin-liferaft/whitelist` |
 | Per-user | `~/.config/deepin-liferaft/whitelist` |
 
 The packaged defaults protect the monitor itself, the screen locker (`dde-lock`), and the desktop shell (`dde-shell`). The whitelist is loaded once at startup, so restart the service after editing:

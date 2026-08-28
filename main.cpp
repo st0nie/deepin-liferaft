@@ -198,14 +198,15 @@ static QSet<QString> parseWhitelist(const QByteArray &data) {
 }
 
 // vim-style levels, merged as one set: package defaults under
-// /usr/share/deepin-liferaft, administrator entries under /etc/xdg, and
-// per-user entries under ~/.config.
+// /usr/share/deepin-liferaft, administrator entries under
+// /etc/deepin-liferaft, and per-user entries under ~/.config.
 static QStringList whitelistPaths() {
     QStringList paths;
     for (const auto &dir : QStandardPaths::standardLocations(QStandardPaths::AppDataLocation))
         paths << dir + "/whitelist";
-    for (const auto &dir : QStandardPaths::standardLocations(QStandardPaths::AppConfigLocation))
-        paths << dir + "/whitelist";
+    paths << "/etc/deepin-liferaft/whitelist";
+    const QString userConfig = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    if (!userConfig.isEmpty()) paths << userConfig + "/whitelist";
     return paths;
 }
 

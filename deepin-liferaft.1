@@ -20,7 +20,7 @@ matches app-DDE-google\\x2dchrome@....service), one per line; blank lines and '#
 Three levels are merged into one set, following the vim configuration model: package defaults in
 .IR /usr/share/deepin-liferaft/whitelist ,
 system administrator entries in
-.IR /etc/xdg/deepin-liferaft/whitelist ,
+.IR /etc/deepin-liferaft/whitelist ,
 and per-user entries in
 .IR ~/.config/deepin-liferaft/whitelist .
 The whitelist is loaded once at startup; restart the service after editing.
@@ -41,7 +41,7 @@ Systemd user service that starts the monitor with
 Packaged whitelist defaults. See
 .BR WHITELIST .
 .TP
-.I /etc/xdg/deepin-liferaft/whitelist
+.I /etc/deepin-liferaft/whitelist
 System administrator whitelist entries.
 .TP
 .I ~/.config/deepin-liferaft/whitelist

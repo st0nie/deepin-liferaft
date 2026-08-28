@@ -9,7 +9,7 @@
 #
 # Levels are merged as one set (vim-style):
 #   /usr/share/deepin-liferaft/whitelist   package defaults (this file)
-#   /etc/xdg/deepin-liferaft/whitelist     system administrator entries
+#   /etc/deepin-liferaft/whitelist         administrator entries
 #   ~/.config/deepin-liferaft/whitelist    per-user entries
 # Changes take effect after restarting deepin-liferaft.
 
