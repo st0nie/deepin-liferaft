@@ -185,6 +185,39 @@ static QStringList desktopInfo(const QString &appId) {
     return cache.insert(appId, {name, desktop.value("Icon").toString()}).value();
 }
 
+// Whitelist entries are desktop file IDs (the same ID parsed from the cgroup
+// unit name), one per line; blank lines and '#' comments are ignored.
+static QSet<QString> parseWhitelist(const QByteArray &data) {
+    QSet<QString> out;
+    for (const auto &raw : data.split('\n')) {
+        const auto line = raw.trimmed();
+        if (line.isEmpty() || line.startsWith('#')) continue;
+        out.insert(QString::fromUtf8(line));
+    }
+    return out;
+}
+
+// vim-style levels, merged as one set: package defaults under
+// /usr/share/deepin-liferaft, administrator entries under /etc/xdg, and
+// per-user entries under ~/.config.
+static QStringList whitelistPaths() {
+    QStringList paths;
+    for (const auto &dir : QStandardPaths::standardLocations(QStandardPaths::AppDataLocation))
+        paths << dir + "/whitelist";
+    for (const auto &dir : QStandardPaths::standardLocations(QStandardPaths::AppConfigLocation))
+        paths << dir + "/whitelist";
+    return paths;
+}
+
+static QSet<QString> loadWhitelist(const QStringList &paths) {
+    QSet<QString> out;
+    for (const auto &path : paths) {
+        QFile file(path);
+        if (file.open(QIODevice::ReadOnly)) out.unite(parseWhitelist(file.readAll()));
+    }
+    return out;
+}
+
 static QString ownCgroupPath() {
     QFile f("/proc/self/cgroup");
     if (!f.open(QIODevice::ReadOnly)) return {};
@@ -231,15 +264,15 @@ static int createSignalFd() {
 }
 
 // DDE 启动组和应用自建 scope 都是独立的应用资源边界。
-static std::optional<QList<Proc>> appProcs(bool requireSwap = false, bool requirePgscan = false) {
+static std::optional<QList<Proc>> appProcs(const QString &root, bool requireSwap, bool requirePgscan,
+                                           const QSet<QString> &whitelist) {
     QList<Proc> out;
-    const QString root = userCgroupPath() + "/app.slice";
     const QDir appRoot(root);
     if (!appRoot.exists()) return std::nullopt;
     for (const auto &unit : appRoot.entryList({"app-DDE-*", "app-*.scope"},
                                               QDir::Dirs | QDir::NoDotAndDotDot)) {
         const auto appId = appIdFromUnit(unit);
-        if (!appId) continue;
+        if (!appId || whitelist.contains(*appId)) continue;
         const QString cgroup = root + "/" + unit;
         const auto memory = fileValue(cgroup + "/memory.current");
         const auto swap = fileValue(cgroup + "/memory.swap.current");
@@ -316,6 +349,38 @@ static bool freezerSelfTest() {
     return !thawOwned(owned) && owned.contains(missing);
 }
 
+static bool whitelistSelfTest() {
+    QTemporaryDir dir;
+    if (!dir.isValid()) return false;
+    const QString root = dir.path() + "/app.slice";
+    const QString allowed = root + "/app-DDE-allowed@1000.service";
+    const QString blocked = root + "/app-DDE-blocked@1001.service";
+    if (!QDir().mkpath(allowed) || !QDir().mkpath(blocked)) return false;
+    for (const auto &cgroup : {allowed, blocked}) {
+        QFile current(cgroup + "/memory.current");
+        if (!current.open(QIODevice::WriteOnly) || current.write("1024") <= 0) return false;
+    }
+
+    const auto all = appProcs(root, false, false, {});
+    if (!all || all->size() != 2) return false;
+    const auto filtered = appProcs(root, false, false, {"blocked"});
+    if (!filtered || filtered->size() != 1 || filtered->first().name != "allowed") return false;
+
+    const auto parsed = parseWhitelist("# comment\n\nfoo-bar\n  baz \t\n");
+    if (parsed != QSet<QString>({"foo-bar", "baz"})) return false;
+
+    QFile systemFile(dir.path() + "/system.list");
+    if (!systemFile.open(QIODevice::WriteOnly) || systemFile.write("alpha\n# note\n") <= 0)
+        return false;
+    systemFile.close();
+    QFile userFile(dir.path() + "/user.list");
+    if (!userFile.open(QIODevice::WriteOnly) || userFile.write("beta\nalpha\n") <= 0)
+        return false;
+    userFile.close();
+    const auto merged = loadWhitelist({systemFile.fileName(), dir.path() + "/missing", userFile.fileName()});
+    return merged == QSet<QString>({"alpha", "beta"});
+}
+
 static bool selfTest() {
     const SystemMemory highSwap{100, 9, 100, 9, true};
     const SystemMemory atLimit{100, 10, 100, 10, true};
@@ -338,6 +403,7 @@ static bool selfTest() {
         && pgscanDelta(100, std::nullopt) == 0
         && pgscanDelta(std::nullopt, 101) == 0
         && freezerSelfTest()
+        && whitelistSelfTest()
         && fmtSize(56727962) == "54.1 MB"
         && fmtSize(1610612736) == "1.5 GB";
 }
@@ -417,7 +483,8 @@ private:
 class ForceQuitWindow : public DMainWindow {
     Q_OBJECT
 public:
-    explicit ForceQuitWindow(int signalFd) {
+    explicit ForceQuitWindow(int signalFd, QSet<QString> whitelist)
+        : m_whitelist(std::move(whitelist)) {
         setWindowTitle(tr("Force Quit Applications"));
         setFixedSize(520, 460);
 
@@ -554,7 +621,8 @@ public:
     }
 
     bool sampleApps(bool requireSwap = false, bool requirePgscan = false) {
-        const auto snapshot = appProcs(requireSwap, requirePgscan);
+        const auto snapshot = appProcs(userCgroupPath() + "/app.slice",
+                                       requireSwap, requirePgscan, m_whitelist);
         if (!snapshot) {
             if (requirePgscan) m_lastPgscan.clear();
             return false;
@@ -775,6 +843,7 @@ private:
     QTimer *m_timer;
     QList<Proc> m_apps;
     QSet<QString> m_frozen;
+    QSet<QString> m_whitelist;
     QHash<QString, quint64> m_lastPgscan;
     quint64 m_lastUserPgscan = 0;
     bool m_hasLastUserPgscan = false;
@@ -797,12 +866,15 @@ int main(int argc, char *argv[]) {
     Dtk::Core::DLogManager::registerConsoleAppender();
     Dtk::Core::DLogManager::registerJournalAppender();
     const bool hidden = a.arguments().contains("--hidden");
+    const QSet<QString> whitelist = loadWhitelist(whitelistPaths());
+    qInfo() << QCoreApplication::translate("main", "Application whitelist: %1 entries")
+              .arg(whitelist.size());
     a.setQuitOnLastWindowClosed(!hidden);
     qInfo() << QCoreApplication::translate("main", "Deepin Liferaft started: pid=%1 mode=%2")
               .arg(getpid())
               .arg(hidden ? QStringLiteral("hidden") : QStringLiteral("foreground"));
     // ponytail: DTK 主题菜单原生保存三态选择; 初始值跟随系统
-    ForceQuitWindow w(signalFd);
+    ForceQuitWindow w(signalFd, whitelist);
     a.setQuitGuard([&w] { return w.unfreezeAll(); });
     // ponytail: 默认显示窗口; --hidden 后台常驻, 压力触发才弹
     if (!hidden) w.show();

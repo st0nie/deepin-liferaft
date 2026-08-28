@@ -20,6 +20,26 @@ Deepin Liferaft provides a macOS-style "Your system has run out of application m
 
 Detection follows Fedora's systemd-oomd policy while interaction follows macOS. systemd-oomd kills one cgroup immediately; Deepin Liferaft pauses up to three candidates and leaves the final choice to the user.
 
+## Whitelist
+
+Whitelisted applications never appear in the dialog's application list and are never frozen or force quit. Entries are desktop file IDs, the same IDs parsed from cgroup unit names — for example `google-chrome` matches `app-DDE-google\x2dchrome@....service`. Write one ID per line; blank lines and `#` comments are ignored.
+
+Following the vim configuration model, three levels are merged into one set:
+
+| Level | File |
+| --- | --- |
+| Package defaults | `/usr/share/deepin-liferaft/whitelist` |
+| System administrator | `/etc/xdg/deepin-liferaft/whitelist` |
+| Per-user | `~/.config/deepin-liferaft/whitelist` |
+
+The packaged defaults protect the monitor itself, the screen locker (`dde-lock`), and the desktop shell (`dde-shell`). The whitelist is loaded once at startup, so restart the service after editing:
+
+```bash
+systemctl --user restart deepin-liferaft.service
+```
+
+The startup log records how many entries were loaded.
+
 ## Safety
 
 Deepin Liferaft only thaws cgroups it froze itself. It skips cgroups already frozen by another component and never freezes the cgroup containing its own process.
@@ -77,7 +97,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The self-test covers PSI parsing, pressure and swap threshold boundaries, `pgscan` sampling failures, memory formatting, and freezer ownership/thaw behavior.
+The self-test covers PSI parsing, pressure and swap threshold boundaries, `pgscan` sampling failures, memory formatting, freezer ownership/thaw behavior, and whitelist parsing, merging, and application filtering.
 
 Run visibly for UI inspection:
 
@@ -106,6 +126,7 @@ The package installs:
 - `/usr/share/icons/hicolor/scalable/apps/deepin-liferaft.svg`
 - `/usr/share/doc/deepin-liferaft/README.md.gz`
 - `/usr/share/man/man1/deepin-liferaft.1.gz`
+- `/usr/share/deepin-liferaft/whitelist` with the packaged whitelist defaults
 - `/usr/share/deepin-liferaft/translations/` with `zh_CN`, `en_US`, `ja_JP`, and `ko_KR` message catalogs
 
 ## User Service

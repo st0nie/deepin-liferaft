@@ -7,6 +7,10 @@
         <source>Deepin Liferaft</source>
         <translation>内存救生圈</translation>
     </message>
+    <message>
+        <source>Application whitelist: %1 entries</source>
+        <translation>已加载应用白名单：%1 条</translation>
+    </message>
 </context>
 <context>
     <name>ForceQuitWindow</name>

@@ -26,5 +26,6 @@ install(FILES ${liferaft_qm_files} DESTINATION share/deepin-liferaft/translation
 install(FILES deepin-liferaft.service DESTINATION lib/systemd/user)
 install(FILES deepin-liferaft.desktop DESTINATION share/applications)
 install(FILES data/icons/deepin-liferaft.svg DESTINATION share/icons/hicolor/scalable/apps)
+install(FILES data/whitelist DESTINATION share/deepin-liferaft)
 install(FILES deepin-liferaft.1 DESTINATION share/man/man1)
 install(FILES README.md DESTINATION share/doc/deepin-liferaft)

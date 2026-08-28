@@ -12,6 +12,18 @@ monitors the current systemd user cgroup for Fedora-style systemd-oomd memory pr
 When pressure remains unsafe, it freezes selected DDE application cgroups and opens a macOS-style dialog that can resume or force quit them.
 .PP
 Closing the dialog, stopping the service, or sending SIGTERM or SIGINT thaws every cgroup frozen by this process before exit.
+.SH WHITELIST
+Whitelisted applications never appear in the dialog and are never frozen or force quit.
+Entries are desktop file IDs, the same IDs parsed from cgroup unit names (for example
+.B google-chrome
+matches app-DDE-google\\x2dchrome@....service), one per line; blank lines and '#' comments are ignored.
+Three levels are merged into one set, following the vim configuration model: package defaults in
+.IR /usr/share/deepin-liferaft/whitelist ,
+system administrator entries in
+.IR /etc/xdg/deepin-liferaft/whitelist ,
+and per-user entries in
+.IR ~/.config/deepin-liferaft/whitelist .
+The whitelist is loaded once at startup; restart the service after editing.
 .SH OPTIONS
 .TP
 .B --hidden
@@ -24,6 +36,16 @@ Run built-in policy, parsing, formatting, and freezer ownership checks, then exi
 .I /usr/lib/systemd/user/deepin-liferaft.service
 Systemd user service that starts the monitor with
 .BR --hidden .
+.TP
+.I /usr/share/deepin-liferaft/whitelist
+Packaged whitelist defaults. See
+.BR WHITELIST .
+.TP
+.I /etc/xdg/deepin-liferaft/whitelist
+System administrator whitelist entries.
+.TP
+.I ~/.config/deepin-liferaft/whitelist
+Per-user whitelist entries.
 .TP
 .I /sys/fs/cgroup/user.slice/user-UID.slice/user@UID.service/
 User cgroup from which memory pressure, reclaim, memory, and swap data are read.

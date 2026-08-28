@@ -7,6 +7,10 @@
         <source>Deepin Liferaft</source>
         <translation>Deepin Liferaft</translation>
     </message>
+    <message>
+        <source>Application whitelist: %1 entries</source>
+        <translation></translation>
+    </message>
 </context>
 <context>
     <name>ForceQuitWindow</name>

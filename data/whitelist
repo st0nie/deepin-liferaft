@@ -1,0 +1,23 @@
+# deepin-liferaft system whitelist.
+#
+# One desktop file ID per line; blank lines and '#' comments are ignored.
+# The ID is the same one parsed from the cgroup unit name, for example
+# "google-chrome" for app-DDE-google\x2dchrome@....service.
+#
+# Whitelisted applications never appear in the force-quit dialog and are
+# never frozen or killed.
+#
+# Levels are merged as one set (vim-style):
+#   /usr/share/deepin-liferaft/whitelist   package defaults (this file)
+#   /etc/xdg/deepin-liferaft/whitelist     system administrator entries
+#   ~/.config/deepin-liferaft/whitelist    per-user entries
+# Changes take effect after restarting deepin-liferaft.
+
+# The monitor itself (defense in depth; its own cgroup is also skipped
+# by the freeze path).
+deepin-liferaft
+# Freezing the screen locker would block unlocking the session.
+dde-lock
+# Desktop shell (taskbar, launcher); freezing it makes the desktop
+# unusable.
+dde-shell
