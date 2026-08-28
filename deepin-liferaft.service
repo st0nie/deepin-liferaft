@@ -7,6 +7,11 @@ PartOf=graphical-session.target
 Type=simple
 ExecStart=/usr/bin/deepin-liferaft --hidden
 Environment=QT_LOGGING_RULES=*.info=true
+# Hard reclaim protection: keep the monitor's own pages out of swap so it
+# can still poll PSI and raise the dialog under extreme memory pressure.
+# Deepin sessions already set memory.min on the whole user.slice chain, so
+# this leaf protection is effective there (ancestors would otherwise cap it).
+MemoryMin=16M
 Restart=on-failure
 RestartSec=2
 

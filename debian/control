@@ -13,3 +13,5 @@ Description: macOS-style application-memory pressure dialog for Deepin
  dialog before the kernel OOM killer acts. Applications are grouped by DDE
  app cgroup, including terminal jobs. The dialog can freeze, resume, or kill
  a selected application cgroup, and closing it resumes every frozen group.
+ The user service protects its own cgroup with memory.min so the dialog
+ still appears under extreme memory pressure.

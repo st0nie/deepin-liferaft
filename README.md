@@ -48,6 +48,8 @@ Closing the dialog thaws every owned cgroup before the window closes. If a thaw 
 
 Invalid PSI, `memory.stat`, `memory.current`, or `/proc/meminfo` samples do not trigger an action.
 
+The systemd user service sets `MemoryMin=16M`, which gives the monitor's own cgroup hard reclaim protection: the kernel will not swap out or reclaim its protected pages even under extreme memory pressure, so the daemon can keep polling PSI and raise the dialog exactly when the rest of the system is starving. 16 MiB covers the measured hidden-mode working set (about 13 MiB PSS) with margin. cgroup v2 caps a leaf cgroup's effective protection by its ancestors' `memory.min`; Deepin sessions already protect the whole `user.slice` chain, so the leaf protection is effective there. This protection applies to service mode and requires systemd 253 or newer (older versions ignore the unknown property); manual foreground runs from a terminal have no such protection.
+
 ## Logging
 
 Deepin Liferaft logs through DTK's `DLog` (journald appender). Under the systemd user service messages go to the user journal; run from a terminal, they also appear on stderr. Log lines carry a timestamp, level, source file, function, and line.

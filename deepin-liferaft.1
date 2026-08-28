@@ -12,6 +12,9 @@ monitors the current systemd user cgroup for Fedora-style systemd-oomd memory pr
 When pressure remains unsafe, it freezes selected DDE application cgroups and opens a macOS-style dialog that can resume or force quit them.
 .PP
 Closing the dialog, stopping the service, or sending SIGTERM or SIGINT thaws every cgroup frozen by this process before exit.
+The systemd user service sets
+.B MemoryMin=16M
+so the monitor's own cgroup keeps hard reclaim protection and can still poll PSI and raise the dialog under extreme memory pressure (requires systemd 253 or newer, and ancestor cgroups with memory.min configured, as Deepin sessions provide).
 .SH WHITELIST
 Whitelisted applications never appear in the dialog and are never frozen or force quit.
 Entries are desktop file IDs, the same IDs parsed from cgroup unit names (for example
