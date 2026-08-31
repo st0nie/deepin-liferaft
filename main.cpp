@@ -874,10 +874,8 @@ int main(int argc, char *argv[]) {
     qInfo() << QCoreApplication::translate("main", "Deepin Liferaft started: pid=%1 mode=%2")
               .arg(getpid())
               .arg(hidden ? QStringLiteral("hidden") : QStringLiteral("foreground"));
-    // ponytail: DTK 主题菜单原生保存三态选择; 初始值跟随系统
     ForceQuitWindow w(signalFd, whitelist);
     a.setQuitGuard([&w] { return w.unfreezeAll(); });
-    // ponytail: 默认显示窗口; --hidden 后台常驻, 压力触发才弹
     if (!hidden) w.show();
     const int result = a.exec();
     if (signalFd >= 0) ::close(signalFd);
