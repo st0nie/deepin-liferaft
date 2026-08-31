@@ -3,6 +3,7 @@
 #include <sys/signalfd.h>
 
 #include <DApplication>
+#include <DGuiApplicationHelper>
 #include <DLabel>
 #include <DLog>
 #include <DMainWindow>
@@ -659,14 +660,13 @@ public:
         m_table->setSelectionMode(QAbstractItemView::SingleSelection);
         m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
         m_table->setFocusPolicy(Qt::NoFocus);
-        QPalette tablePal = m_table->palette();
-        tablePal.setColor(QPalette::Inactive,
-                          QPalette::Highlight,
-                          tablePal.color(QPalette::Active, QPalette::Highlight));
-        tablePal.setColor(QPalette::Inactive,
-                          QPalette::HighlightedText,
-                          tablePal.color(QPalette::Active, QPalette::HighlightedText));
-        m_table->setPalette(tablePal);
+        syncTablePalette();
+        connect(Dtk::Gui::DGuiApplicationHelper::instance(),
+                &Dtk::Gui::DGuiApplicationHelper::applicationPaletteChanged,
+                this,
+                [this] {
+                    syncTablePalette();
+                });
         m_table->setIconSize(QSize(24, 24));
         vbox->addWidget(m_table);
 
@@ -905,6 +905,24 @@ public:
                 retryShutdown();
             });
         }
+    }
+
+    // Keep the selection highlighted even while the window is inactive, using the
+    // current DTK palette. The widget palette does not follow theme changes on its
+    // own, so this must be re-applied whenever applicationPaletteChanged fires.
+    void syncTablePalette()
+    {
+        if (!m_table)
+            return;
+        const QPalette themePal = Dtk::Gui::DGuiApplicationHelper::instance()->applicationPalette();
+        const QColor highlight = themePal.color(QPalette::Active, QPalette::Highlight);
+        const QColor highlightedText = themePal.color(QPalette::Active, QPalette::HighlightedText);
+        QPalette tablePal = m_table->palette();
+        tablePal.setColor(QPalette::Active, QPalette::Highlight, highlight);
+        tablePal.setColor(QPalette::Inactive, QPalette::Highlight, highlight);
+        tablePal.setColor(QPalette::Active, QPalette::HighlightedText, highlightedText);
+        tablePal.setColor(QPalette::Inactive, QPalette::HighlightedText, highlightedText);
+        m_table->setPalette(tablePal);
     }
 
     void updateButtons()
