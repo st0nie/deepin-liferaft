@@ -1,4 +1,5 @@
 /.codegraph/
+/.cache/
 /.pi-subagents/
 /build/
 /obj-*/
