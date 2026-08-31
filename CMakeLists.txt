@@ -24,6 +24,9 @@ add_test(NAME self-test COMMAND deepin-liferaft --self-test)
 install(TARGETS deepin-liferaft RUNTIME DESTINATION bin)
 install(FILES ${liferaft_qm_files} DESTINATION share/deepin-liferaft/translations)
 install(FILES deepin-liferaft.service DESTINATION lib/systemd/user)
+# Enable kernel PSI (memory.pressure) on CONFIG_PSI_DEFAULT_DISABLED=y kernels.
+# Absolute DESTINATION: install under /etc, not /usr/etc.
+install(FILES data/grub/90_deepin_liferaft.cfg DESTINATION /etc/default/grub.d)
 install(FILES deepin-liferaft.desktop DESTINATION share/applications)
 install(FILES data/icons/deepin-liferaft.svg DESTINATION share/icons/hicolor/scalable/apps)
 install(FILES data/whitelist DESTINATION share/deepin-liferaft)

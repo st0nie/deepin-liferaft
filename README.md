@@ -91,6 +91,21 @@ Most remaining RSS is shared DTK/Qt code. An otherwise empty `DApplication` meas
 - Qt 6 Linguist tools (`qt6-tools-dev`, `qt6-l10n-tools`) to compile translations
 - CMake 3.16 or newer and a C++17 compiler
 
+## Kernel PSI
+
+deepin-liferaft reads `memory.pressure`, which requires kernel PSI. Some Deepin kernels build with `CONFIG_PSI_DEFAULT_DISABLED=y`, so PSI is off until the `psi=1` kernel parameter is passed at boot.
+
+The Debian package installs `/etc/default/grub.d/90_deepin_liferaft.cfg`, which appends `psi=1` to `GRUB_CMDLINE_LINUX_DEFAULT` idempotently during `grub-mkconfig` — only when `psi=1` is not already present in either `GRUB_CMDLINE_LINUX` or `GRUB_CMDLINE_LINUX_DEFAULT`. `postinst` runs `update-grub`, so the parameter takes effect after the next reboot. If PSI is already enabled, the snippet is a no-op.
+
+To opt out, remove the snippet and rerun `update-grub`:
+
+```bash
+sudo rm /etc/default/grub.d/90_deepin_liferaft.cfg
+sudo update-grub
+```
+
+PSI cannot be enabled at runtime on a `CONFIG_PSI_DEFAULT_DISABLED=y` kernel; a reboot is required.
+
 ## Build and Test
 
 ```bash

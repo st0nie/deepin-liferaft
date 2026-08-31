@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # deepin-liferaft reads memory.pressure (PSI). The package installs an
+        # /etc/default/grub.d snippet that adds the psi=1 kernel parameter on
+        # kernels built with CONFIG_PSI_DEFAULT_DISABLED=y. Regenerate the GRUB
+        # config so the parameter takes effect at the next boot. This is
+        # non-fatal: a failure here must not abort installation; the
+        # administrator can run update-grub by hand.
+        if [ -z "$DPKG_ROOT" ] && command -v update-grub >/dev/null 2>&1; then
+            update-grub || echo "deepin-liferaft: update-grub failed; run it manually to enable kernel PSI at next boot" >&2
+        fi
+        ;;
+esac
+
+#DEBHELPER#

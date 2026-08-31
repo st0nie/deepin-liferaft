@@ -15,3 +15,7 @@ Description: macOS-style application-memory pressure dialog for Deepin
  a selected application cgroup, and closing it resumes every frozen group.
  The user service protects its own cgroup with memory.min so the dialog
  still appears under extreme memory pressure.
+ .
+ The package enables kernel PSI (psi=1) on CONFIG_PSI_DEFAULT_DISABLED=y
+ kernels via a GRUB snippet and enables its user service for all graphical
+ sessions on install.

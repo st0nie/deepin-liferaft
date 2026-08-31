@@ -1,3 +1,13 @@
+deepin-liferaft (0.1.1) unstable; urgency=medium
+
+  * Install /etc/default/grub.d/90_deepin_liferaft.cfg to enable kernel PSI
+    (psi=1) idempotently, and run update-grub in postinst so memory.pressure
+    is available on CONFIG_PSI_DEFAULT_DISABLED=y kernels after the next boot.
+  * Document PSI auto-enable and the already-present global enable of the user
+    service for all graphical-session users in README and the manual page.
+
+ -- Ston Jia <ston.jia@outlook.com>  Mon, 31 Aug 2026 13:10:19 +0800
+
 deepin-liferaft (0.1.0) unstable; urgency=medium
 
   * Initial release.

@@ -52,11 +52,33 @@ Per-user whitelist entries.
 .TP
 .I /sys/fs/cgroup/user.slice/user-UID.slice/user@UID.service/
 User cgroup from which memory pressure, reclaim, memory, and swap data are read.
+.TP
+.I /etc/default/grub.d/90_deepin_liferaft.cfg
+GRUB snippet that adds the
+.B psi=1
+kernel parameter so
+.B memory.pressure
+is available on kernels built with
+.BR CONFIG_PSI_DEFAULT_DISABLED=y .
 .SH SIGNALS
 .B SIGTERM
 and
 .B SIGINT
 request a clean shutdown. Owned frozen cgroups are thawed before the process exits.
+.SH NOTES
+.B deepin-liferaft
+requires kernel PSI (memory.pressure).
+On kernels built with
+.BR CONFIG_PSI_DEFAULT_DISABLED=y ,
+PSI is disabled at boot and enabled by the
+.B psi=1
+kernel parameter. The package installs a
+.I /etc/default/grub.d
+snippet that adds
+.B psi=1
+idempotently and runs
+.B update-grub
+during installation, so PSI becomes available after the next reboot.
 .SH SEE ALSO
 .BR systemd-oomd (8),
 .BR systemd.resource-control (5),
