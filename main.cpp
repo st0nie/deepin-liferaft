@@ -1035,6 +1035,14 @@ int main(int argc, char *argv[])
     a.setApplicationName("deepin-liferaft");
     a.loadTranslator();
     a.setApplicationDisplayName(QCoreApplication::translate("main", "Deepin Liferaft"));
+    a.setProductIcon(QIcon(QStringLiteral(":/icons/deepin-liferaft.svg")));
+    a.setApplicationVersion(QStringLiteral(LIFERAFT_VERSION));
+    a.setApplicationDescription(
+            QCoreApplication::translate("main",
+                                        "Detects sustained memory pressure and pauses the "
+                                        "most memory-hungry applications, so you can resume "
+                                        "or force quit them before the desktop becomes unusable."));
+    a.setApplicationHomePage(QStringLiteral("https://github.com/st0nie/deepin-liferaft"));
     Dtk::Core::DLogManager::registerConsoleAppender();
     Dtk::Core::DLogManager::registerJournalAppender();
     const bool hidden = a.arguments().contains("--hidden");
