@@ -1,35 +1,42 @@
-// deepin-liferaft: macOS "Your system has run out of application memory" 对话框的 DTK 克隆
-// Fedora systemd-oomd 策略触发 → 自动弹出，按 DDE 应用 cgroup 内存排序。
+// deepin-liferaft: DTK 内存压力对话框：Fedora systemd-oomd 策略触发 →
+// 自动弹出，按 DDE 应用 cgroup 内存排序，允许恢复或强制结束应用。
 #include <sys/signalfd.h>
 
 #include <DApplication>
-#include <DGuiApplicationHelper>
+#include <DFontSizeManager>
+#include <DHorizontalLine>
 #include <DLabel>
+#include <DListView>
 #include <DLog>
 #include <DMainWindow>
+#include <DPaletteHelper>
 #include <DPushButton>
-#include <DSuggestButton>
+#include <DStandardItem>
+#include <DStyle>
+#include <DStyledItemDelegate>
 #include <DTitlebar>
+#include <DWarningButton>
 
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QHash>
-#include <QHeaderView>
 #include <QIcon>
+#include <QItemSelectionModel>
 #include <QLocale>
 #include <QPainter>
 #include <QSet>
 #include <QSettings>
 #include <QShowEvent>
 #include <QSocketNotifier>
+#include <QStackedLayout>
+#include <QStandardItemModel>
 #include <QStandardPaths>
 #include <QStyle>
-#include <QStyledItemDelegate>
-#include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -499,49 +506,207 @@ static bool selfTest()
 
 static const int APP_NAME_ROLE = Qt::UserRole + 1;
 static const int PAUSED_ROLE = Qt::UserRole + 2;
+static const int MEMORY_ROLE = Qt::UserRole + 3;
+static const int CGROUP_ROLE = Qt::UserRole + 4;
 
-class AppNameDelegate : public QStyledItemDelegate
+static const int APP_ROW_HEIGHT = 44;
+static const int MAX_LIST_ROWS = 10;
+
+// Warning badge used by the alert banner: the themed warning icon on a soft
+// tint of the warning color, following DDE's alert styling.
+class AlertBadge : public QWidget
 {
 public:
-    using QStyledItemDelegate::QStyledItemDelegate;
+    explicit AlertBadge(QWidget *parent = nullptr)
+        : QWidget(parent)
+    {
+        setFixedSize(36, 36);
+        m_icon = QIcon::fromTheme(QStringLiteral("dialog-warning"),
+                                  style()->standardIcon(QStyle::SP_MessageBoxWarning));
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        QColor tint = DPaletteHelper::instance()->palette(this).color(DPalette::TextWarning);
+        tint.setAlphaF(0.16);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(tint);
+        painter.drawRoundedRect(rect(), 10, 10);
+
+        QRect iconRect(QPoint(), QSize(22, 22));
+        iconRect.moveCenter(rect().center());
+        m_icon.paint(&painter, iconRect);
+    }
+
+private:
+    QIcon m_icon;
+};
+
+// Alert header card: a rounded background holding the warning badge and two
+// lines of text, in the banner style used across DDE.
+class AlertBanner : public QFrame
+{
+public:
+    AlertBanner(const QString &title, const QString &message, QWidget *parent = nullptr)
+        : QFrame(parent)
+    {
+        setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        auto *layout = new QHBoxLayout(this);
+        layout->setContentsMargins(14, 14, 14, 14);
+        layout->setSpacing(14);
+        layout->addWidget(new AlertBadge(this), 0, Qt::AlignTop);
+
+        auto *textLayout = new QVBoxLayout;
+        textLayout->setContentsMargins(0, 0, 0, 0);
+        textLayout->setSpacing(3);
+
+        auto *titleLabel = new DLabel(title, this);
+        titleLabel->setWordWrap(true);
+        titleLabel->setElideMode(Qt::ElideNone);
+        DFontSizeManager::instance()->bind(titleLabel, DFontSizeManager::T5, QFont::DemiBold);
+
+        auto *messageLabel = new DLabel(message, this);
+        messageLabel->setWordWrap(true);
+        messageLabel->setElideMode(Qt::ElideNone);
+        messageLabel->setForegroundRole(DPalette::TextTips);
+        DFontSizeManager::instance()->bind(messageLabel, DFontSizeManager::T8);
+
+        textLayout->addWidget(titleLabel);
+        textLayout->addWidget(messageLabel);
+        layout->addLayout(textLayout, 1);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(
+                DPaletteHelper::instance()->palette(this).color(DPalette::ObviousBackground));
+        const int radius = DStyleHelper(style()).pixelMetric(DStyle::PM_FrameRadius);
+        painter.drawRoundedRect(rect(), radius, radius);
+    }
+};
+
+// Draws one application row — icon, name, paused tag and right-aligned memory
+// usage — on an alternating row background. The striping follows
+// deepin-system-monitor's BaseTableView::drawRow(): even rows use
+// DPalette::AlternateBase, odd rows DPalette::Base, the selected row uses the
+// accent color and hovering darkens the base color.
+class AppRowDelegate : public DStyledItemDelegate
+{
+public:
+    explicit AppRowDelegate(DListView *view)
+        : DStyledItemDelegate(view)
+    {
+    }
 
     void paint(QPainter *painter,
                const QStyleOptionViewItem &option,
                const QModelIndex &index) const override
     {
-        QStyleOptionViewItem base(option);
-        initStyleOption(&base, index);
-        const QIcon icon = base.icon;
-        base.icon = {};
-        base.text.clear();
-        QStyle *style = base.widget ? base.widget->style() : QApplication::style();
-        style->drawControl(QStyle::CE_ItemViewItem, &base, painter, base.widget);
+        QStyleOptionViewItem opt(option);
+        initStyleOption(&opt, index);
+
+        const DPalette palette = DPaletteHelper::instance()->palette(opt.widget);
+        QPalette::ColorGroup group =
+                opt.state.testFlag(QStyle::State_Enabled) ? QPalette::Normal : QPalette::Disabled;
+        if (group == QPalette::Normal && !opt.state.testFlag(QStyle::State_Active))
+            group = QPalette::Inactive;
+
+        const QColor baseColor = palette.color(DPalette::Base);
+        const bool selected = opt.state.testFlag(QStyle::State_Selected);
+        const bool hovered = opt.state.testFlag(QStyle::State_MouseOver);
+        QColor background = (index.row() % 2) ? baseColor : palette.color(DPalette::AlternateBase);
+        if (selected)
+            background = hovered ? DStyle::adjustColor(palette.color(DPalette::Highlight), 0, 0, 20)
+                                 : palette.color(DPalette::Highlight);
+        else if (hovered)
+            background = DStyle::adjustColor(baseColor, 0, 0, -10);
+
+        const QColor textColor =
+                opt.palette.color(group, selected ? QPalette::HighlightedText : QPalette::Text);
+        const QColor tipsColor = selected ? textColor : palette.color(DPalette::TextTips);
+        const QColor warningColor = selected ? textColor : palette.color(DPalette::TextWarning);
+
+        const QRect content = opt.rect.marginsRemoved(margins());
+        const QStyle *viewStyle = opt.widget ? opt.widget->style() : QApplication::style();
+        const int radius =
+                DStyleHelper(viewStyle).pixelMetric(DStyle::PM_FrameRadius, &opt, opt.widget);
 
         painter->save();
-        painter->setClipRect(option.rect);
-        const QRect iconRect(option.rect.left() + 4, option.rect.center().y() - 12, 24, 24);
-        icon.paint(painter, iconRect);
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(background);
+        painter->drawRoundedRect(opt.rect, radius, radius);
 
-        const bool paused = index.data(PAUSED_ROLE).toBool();
-        const bool selected = option.state.testFlag(QStyle::State_Selected);
-        const QColor normal =
-                option.palette.color(selected ? QPalette::HighlightedText : QPalette::Text);
-        const QFontMetrics metrics(option.font);
-        const QString suffix =
-                paused ? QCoreApplication::translate("AppNameDelegate", "(Paused)") : QString();
-        const int suffixWidth = metrics.horizontalAdvance(suffix);
-        const int textX = iconRect.right() + 7;
-        const int available = std::max(0, option.rect.right() - textX - suffixWidth - 4);
-        const QString name =
-                metrics.elidedText(index.data(APP_NAME_ROLE).toString(), Qt::ElideRight, available);
-        const int baseline = option.rect.center().y() + (metrics.ascent() - metrics.descent()) / 2;
+        const int iconSize = 24;
+        const QRect iconRect(content.left(),
+                             content.center().y() - iconSize / 2,
+                             iconSize,
+                             iconSize);
+        index.data(Qt::DecorationRole)
+                .value<QIcon>()
+                .paint(painter,
+                       iconRect,
+                       Qt::AlignCenter,
+                       selected ? QIcon::Selected : QIcon::Normal);
 
-        painter->setPen(paused ? QColor(205, 45, 45) : normal);
-        painter->drawText(textX, baseline, name);
-        if (paused) {
-            painter->setPen(normal);
-            painter->drawText(textX + metrics.horizontalAdvance(name), baseline, suffix);
+        const QString memory = index.data(MEMORY_ROLE).toString();
+        const QFont memoryFont = DFontSizeManager::instance()->get(DFontSizeManager::T8, opt.font);
+        const QFontMetricsF memoryMetrics(memoryFont);
+        const int memoryWidth = int(memoryMetrics.horizontalAdvance(memory)) + 4;
+        const QRect memoryRect(content.right() - memoryWidth,
+                               content.top(),
+                               memoryWidth,
+                               content.height());
+
+        int nameRight = memoryRect.left() - 10;
+        const QString tagText = index.data(PAUSED_ROLE).toBool()
+                ? QCoreApplication::translate("AppRowDelegate", "Paused")
+                : QString();
+        if (!tagText.isEmpty()) {
+            const QFont tagFont = DFontSizeManager::instance()->get(DFontSizeManager::T9, opt.font);
+            const QFontMetricsF tagMetrics(tagFont);
+            const int tagWidth = int(tagMetrics.horizontalAdvance(tagText)) + 14;
+            const int tagHeight = 18;
+            const QRect tagRect(nameRight - tagWidth,
+                                content.center().y() - tagHeight / 2,
+                                tagWidth,
+                                tagHeight);
+            QColor tagBackground = warningColor;
+            tagBackground.setAlphaF(selected ? 0.22 : 0.16);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(tagBackground);
+            painter->drawRoundedRect(tagRect, 4, 4);
+            painter->setFont(tagFont);
+            painter->setPen(warningColor);
+            painter->drawText(tagRect, Qt::AlignCenter, tagText);
+            nameRight = tagRect.left() - 8;
         }
+
+        QFont nameFont = DFontSizeManager::instance()->get(DFontSizeManager::T7, opt.font);
+        nameFont.setWeight(QFont::Medium);
+        const QFontMetricsF nameMetrics(nameFont);
+        const QRect nameRect(iconRect.right() + 10,
+                             content.top(),
+                             std::max(0, nameRight - iconRect.right() - 10),
+                             content.height());
+        painter->setFont(nameFont);
+        painter->setPen(textColor);
+        painter->drawText(nameRect,
+                          Qt::AlignVCenter | Qt::AlignLeft,
+                          nameMetrics.elidedText(index.data(APP_NAME_ROLE).toString(),
+                                                 Qt::ElideRight,
+                                                 nameRect.width()));
+
+        painter->setFont(memoryFont);
+        painter->setPen(tipsColor);
+        painter->drawText(memoryRect, Qt::AlignVCenter | Qt::AlignRight, memory);
         painter->restore();
     }
 };
@@ -581,8 +746,9 @@ public:
     explicit ForceQuitWindow(int signalFd, QSet<QString> whitelist)
         : m_whitelist(std::move(whitelist))
     {
-        setWindowTitle(tr("Force Quit Applications"));
-        setFixedSize(520, 460);
+        setWindowTitle(QGuiApplication::applicationDisplayName());
+        resize(560, 560);
+        setMinimumSize(520, 480);
 
         if (const auto pgscan = memoryStatValue(userCgroupPath(), "pgscan")) {
             m_lastUserPgscan = *pgscan;
@@ -607,72 +773,60 @@ public:
 
     void ensureUi()
     {
-        if (m_table)
+        if (m_view)
             return;
 
         const QIcon icon(":/icons/deepin-liferaft.svg");
         setWindowIcon(icon);
         titlebar()->setIcon(icon);
         titlebar()->setTitle(windowTitle());
+
         auto *central = new QWidget;
         auto *vbox = new QVBoxLayout(central);
-        vbox->setContentsMargins(24, 20, 24, 20);
-        vbox->setSpacing(10);
+        vbox->setContentsMargins(16, 8, 16, 12);
+        vbox->setSpacing(12);
 
-        auto *heading = new QHBoxLayout;
-        auto *warning = new DLabel;
-        warning->setFixedSize(54, 54);
-        warning->setAlignment(Qt::AlignCenter);
-        warning->setPixmap(style()->standardIcon(QStyle::SP_MessageBoxWarning).pixmap(48, 48));
-        heading->addWidget(warning, 0, Qt::AlignTop);
+        vbox->addWidget(new AlertBanner(
+                tr("Not enough memory"),
+                tr("To keep the desktop responsive, applications using the most memory were "
+                   "paused. Resume the ones you still need, or force quit them."),
+                central));
 
-        auto *headingText = new QVBoxLayout;
-        auto *title = new DLabel(tr("Your system has run out of application memory."));
-        QFont font = title->font();
-        font.setPointSize(15);
-        font.setBold(true);
-        title->setFont(font);
-        title->setWordWrap(true);
-        title->setElideMode(Qt::ElideNone);
-        auto *sub = new DLabel(tr("To avoid problems with your computer, quit applications you are "
-                                  "no longer using."));
-        sub->setWordWrap(true);
-        sub->setElideMode(Qt::ElideNone);
-        QPalette palette = sub->palette();
-        palette.setColor(QPalette::WindowText, QColor(80, 80, 85));
-        sub->setPalette(palette);
-        headingText->addWidget(title);
-        headingText->addWidget(sub);
-        heading->addLayout(headingText, 1);
-        vbox->addLayout(heading);
-        vbox->addSpacing(6);
+        m_view = new DListView(central);
+        m_view->setFrameShape(QFrame::NoFrame);
+        m_view->setSelectionMode(QAbstractItemView::SingleSelection);
+        m_view->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        m_view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        m_view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        m_view->setUniformItemSizes(true);
+        m_view->viewport()->setAttribute(Qt::WA_Hover, true);
+        m_view->setItemDelegate(new AppRowDelegate(m_view));
+        m_view->setItemSize(QSize(0, APP_ROW_HEIGHT));
+        m_view->setItemSpacing(0);
+        m_view->setItemMargins(QMargins(12, 6, 12, 6));
+        m_model = new QStandardItemModel(m_view);
+        m_view->setModel(m_model);
 
-        m_table = new QTableWidget(0, 2);
-        m_table->horizontalHeader()->hide();
-        m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-        m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-        m_table->verticalHeader()->hide();
-        m_table->verticalHeader()->setDefaultSectionSize(30);
-        m_table->setItemDelegateForColumn(0, new AppNameDelegate(m_table));
-        m_table->setShowGrid(false);
-        m_table->setFrameShape(QFrame::StyledPanel);
-        m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-        m_table->setSelectionMode(QAbstractItemView::SingleSelection);
-        m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-        m_table->setFocusPolicy(Qt::NoFocus);
-        syncTablePalette();
-        connect(Dtk::Gui::DGuiApplicationHelper::instance(),
-                &Dtk::Gui::DGuiApplicationHelper::applicationPaletteChanged,
-                this,
-                [this] {
-                    syncTablePalette();
-                });
-        m_table->setIconSize(QSize(24, 24));
-        vbox->addWidget(m_table);
+        auto *emptyLabel = new DLabel(tr("No applications to show"), central);
+        emptyLabel->setForegroundRole(DPalette::TextTips);
+        auto *emptyPage = new QWidget(central);
+        auto *emptyLayout = new QVBoxLayout(emptyPage);
+        emptyLayout->setContentsMargins(0, 0, 0, 0);
+        emptyLayout->addWidget(emptyLabel, 0, Qt::AlignCenter);
+
+        m_listPages = new QStackedLayout;
+        m_listPages->addWidget(m_view);
+        m_listPages->addWidget(emptyPage);
+        auto *listHost = new QWidget(central);
+        listHost->setLayout(m_listPages);
+        vbox->addWidget(listHost, 1);
+
+        vbox->addWidget(new DHorizontalLine(central));
 
         auto *buttons = new QHBoxLayout;
-        m_resumeBtn = new DPushButton(tr("Resume"));
-        m_killBtn = new DSuggestButton;
+        buttons->setSpacing(8);
+        m_resumeBtn = new DPushButton(tr("Resume"), central);
+        m_killBtn = new DWarningButton(central);
         m_killBtn->setText(tr("Force Quit"));
         buttons->addStretch();
         buttons->addWidget(m_resumeBtn);
@@ -680,14 +834,13 @@ public:
         vbox->addLayout(buttons);
         setCentralWidget(central);
 
-        connect(m_table, &QTableWidget::itemSelectionChanged, this, [this] {
+        connect(m_view->selectionModel(), &QItemSelectionModel::selectionChanged, this, [this] {
             updateButtons();
         });
         connect(m_resumeBtn, &DPushButton::clicked, this, [this] {
-            const int row = m_table->currentRow();
-            if (row < 0)
+            const QString cgroup = currentCgroup();
+            if (cgroup.isEmpty())
                 return;
-            const QString cgroup = m_table->item(row, 0)->data(Qt::UserRole).toString();
             if (thawCgroup(cgroup)) {
                 m_frozen.remove(cgroup);
                 qInfo() << tr("Resumed %1").arg(cgroup);
@@ -698,10 +851,9 @@ public:
             refresh();
         });
         connect(m_killBtn, &DPushButton::clicked, this, [this] {
-            const int row = m_table->currentRow();
-            if (row < 0)
+            const QString cgroup = currentCgroup();
+            if (cgroup.isEmpty())
                 return;
-            const QString cgroup = m_table->item(row, 0)->data(Qt::UserRole).toString();
             const bool owned = m_frozen.contains(cgroup);
             const bool killed = writeCgroup(cgroup, "cgroup.kill", "1");
             const bool thawed = !owned || thawCgroup(cgroup);
@@ -721,10 +873,12 @@ public:
 
     void releaseUi()
     {
-        if (!m_table)
+        if (!m_view)
             return;
         QWidget *central = takeCentralWidget();
-        m_table = nullptr;
+        m_view = nullptr;
+        m_model = nullptr;
+        m_listPages = nullptr;
         m_resumeBtn = nullptr;
         m_killBtn = nullptr;
         central->deleteLater();
@@ -907,42 +1061,26 @@ public:
         }
     }
 
-    // Keep the selection highlighted even while the window is inactive, using the
-    // current DTK palette. The widget palette does not follow theme changes on its
-    // own, so this must be re-applied whenever applicationPaletteChanged fires.
-    void syncTablePalette()
-    {
-        if (!m_table)
-            return;
-        const QPalette themePal = Dtk::Gui::DGuiApplicationHelper::instance()->applicationPalette();
-        const QColor highlight = themePal.color(QPalette::Active, QPalette::Highlight);
-        const QColor highlightedText = themePal.color(QPalette::Active, QPalette::HighlightedText);
-        QPalette tablePal = m_table->palette();
-        tablePal.setColor(QPalette::Active, QPalette::Highlight, highlight);
-        tablePal.setColor(QPalette::Inactive, QPalette::Highlight, highlight);
-        tablePal.setColor(QPalette::Active, QPalette::HighlightedText, highlightedText);
-        tablePal.setColor(QPalette::Inactive, QPalette::HighlightedText, highlightedText);
-        m_table->setPalette(tablePal);
-    }
-
     void updateButtons()
     {
-        if (!m_table)
+        if (!m_view)
             return;
-        const int row = m_table->currentRow();
-        const QString cgroup =
-                row < 0 ? QString() : m_table->item(row, 0)->data(Qt::UserRole).toString();
+        const QString cgroup = currentCgroup();
         m_resumeBtn->setEnabled(!cgroup.isEmpty() && m_frozen.contains(cgroup));
         m_killBtn->setEnabled(!cgroup.isEmpty());
     }
 
+    QString currentCgroup() const
+    {
+        const QModelIndex index = m_view ? m_view->currentIndex() : QModelIndex();
+        return index.isValid() ? index.data(CGROUP_ROLE).toString() : QString();
+    }
+
     void refresh()
     {
-        if (!m_table)
+        if (!m_view || !m_model)
             return;
-        QString selected;
-        if (m_table->currentRow() >= 0)
-            selected = m_table->item(m_table->currentRow(), 0)->data(Qt::UserRole).toString();
+        const QString selected = currentCgroup();
 
         auto procs = m_apps;
         std::sort(procs.begin(), procs.end(), [this](const Proc &a, const Proc &b) {
@@ -950,32 +1088,35 @@ public:
             const bool bFrozen = m_frozen.contains(b.cgroup);
             return aFrozen == bFrozen ? a.memory > b.memory : aFrozen;
         });
-        if (procs.size() > 10)
-            procs.resize(10);
-        m_table->setRowCount(procs.size());
+        if (procs.size() > MAX_LIST_ROWS)
+            procs.resize(MAX_LIST_ROWS);
+
+        // Update rows in place so scrolling, hovering and selection survive the
+        // one-second refresh while the dialog is open.
+        while (m_model->rowCount() > procs.size())
+            m_model->removeRow(m_model->rowCount() - 1);
+        while (m_model->rowCount() < procs.size())
+            m_model->appendRow(new DStandardItem);
+
         int selectedRow = -1;
         for (int i = 0; i < procs.size(); ++i) {
             const bool frozen = m_frozen.contains(procs[i].cgroup);
-            auto *name =
-                    new QTableWidgetItem(procs[i].name + (frozen ? tr("(Paused)") : QString()));
-            name->setIcon(
+            auto *item = static_cast<DStandardItem *>(m_model->item(i));
+            item->setData(procs[i].cgroup, CGROUP_ROLE);
+            item->setData(procs[i].name, APP_NAME_ROLE);
+            item->setData(frozen, PAUSED_ROLE);
+            item->setData(fmtSize(procs[i].memory), MEMORY_ROLE);
+            item->setIcon(
                     QIcon::fromTheme(procs[i].icon, QIcon::fromTheme("application-x-executable")));
-            name->setData(Qt::UserRole, procs[i].cgroup);
-            name->setData(APP_NAME_ROLE, procs[i].name);
-            name->setData(PAUSED_ROLE, frozen);
-            m_table->setItem(i, 0, name);
-
-            auto *memory = new QTableWidgetItem(fmtSize(procs[i].memory));
-            memory->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            memory->setForeground(QColor(105, 105, 110));
-            m_table->setItem(i, 1, memory);
             if (procs[i].cgroup == selected)
                 selectedRow = i;
         }
+
         if (selectedRow < 0 && !procs.isEmpty())
             selectedRow = 0;
         if (selectedRow >= 0)
-            m_table->selectRow(selectedRow);
+            m_view->setCurrentIndex(m_model->index(selectedRow, 0));
+        m_listPages->setCurrentIndex(procs.isEmpty() ? 1 : 0);
         updateButtons();
     }
 
@@ -1006,7 +1147,9 @@ protected:
     }
 
 private:
-    QTableWidget *m_table = nullptr;
+    DListView *m_view = nullptr;
+    QStandardItemModel *m_model = nullptr;
+    QStackedLayout *m_listPages = nullptr;
     DPushButton *m_resumeBtn = nullptr;
     DPushButton *m_killBtn = nullptr;
     QTimer *m_timer;

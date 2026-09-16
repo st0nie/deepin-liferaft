@@ -4,7 +4,7 @@
   <img src="data/icons/deepin-liferaft.svg" width="128" alt="Deepin Liferaft icon">
 </p>
 
-Deepin Liferaft provides a macOS-style "Your system has run out of application memory" dialog for Deepin. It detects sustained memory pressure, pauses application cgroups before the desktop becomes unusable, and lets the user resume or force quit an application.
+Deepin Liferaft provides a DTK-native out-of-memory dialog for Deepin. It detects sustained memory pressure, pauses application cgroups before the desktop becomes unusable, and lets the user resume or force quit an application with the system light or dark theme and accent color.
 
 ## Behavior
 
@@ -18,7 +18,16 @@ Deepin Liferaft provides a macOS-style "Your system has run out of application m
 - Freezes up to three candidates with `cgroup.freeze`; Resume thaws the selected group and Force Quit uses `cgroup.kill`.
 - Waits 15 seconds after an action before showing another dialog.
 
-Detection follows Fedora's systemd-oomd policy while interaction follows macOS. systemd-oomd kills one cgroup immediately; Deepin Liferaft pauses up to three candidates and leaves the final choice to the user.
+Detection follows Fedora's systemd-oomd policy while the presentation follows Deepin's design language. systemd-oomd kills one cgroup immediately; Deepin Liferaft pauses up to three candidates and leaves the final choice to the user.
+
+## Dialog
+
+The window is a `DMainWindow` with a DTK titlebar. Its content follows the DDE style:
+
+- A rounded alert banner with a warning badge, a title, and a short explanation.
+- A `DListView` of applications with the same alternating row shading as Deepin System Monitor — even rows use `DPalette::AlternateBase`, odd rows `DPalette::Base` — plus an accent-colored selection and a hover highlight. Each row shows the application icon, its localized name, a `Paused` tag when the cgroup is frozen, and right-aligned memory usage.
+- A separator above a right-aligned button row: `Resume` for the selected frozen application and `Force Quit`, which uses the destructive warning button style.
+- Colors come from the DTK palette, so the dialog follows light and dark themes and the system accent color without hard-coded values.
 
 ## Whitelist
 
@@ -71,7 +80,7 @@ systemctl --user restart deepin-liferaft.service
 
 ## Resource Use
 
-`--hidden` mode delays creation of the table, labels, buttons, and icon-theme data until the dialog is first shown. It also avoids scanning every application cgroup while pressure is low and the window is hidden.
+`--hidden` mode delays creation of the list, labels, buttons, and icon-theme data until the dialog is first shown. It also avoids scanning every application cgroup while pressure is low and the window is hidden.
 
 On the development machine, measured three seconds after startup:
 
@@ -178,7 +187,7 @@ systemctl --user status deepin-liferaft.service
 
 ## Platform Differences
 
-Linux PSI and systemd cgroups replace macOS VM-pressure and application lifecycle APIs. The dialog is therefore behaviorally similar rather than binary-identical: DDE cgroups define application boundaries, Fedora's systemd-oomd thresholds decide when to show the dialog, and DTK supplies native Deepin window styling.
+Linux PSI and systemd cgroups replace macOS VM-pressure and application lifecycle APIs. The interaction is modelled on the macOS "out of application memory" alert, but DDE cgroups define application boundaries, Fedora's systemd-oomd thresholds decide when to show the dialog, and DTK supplies native Deepin window styling and theming.
 
 ## License
 

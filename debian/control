@@ -8,11 +8,13 @@ Standards-Version: 4.6.2
 Package: deepin-liferaft
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: macOS-style application-memory pressure dialog for Deepin
- Uses Fedora's systemd-oomd PSI and swap policy to open a DTK force-quit
- dialog before the kernel OOM killer acts. Applications are grouped by DDE
- app cgroup, including terminal jobs. The dialog can freeze, resume, or kill
- a selected application cgroup, and closing it resumes every frozen group.
+Description: DTK application-memory pressure dialog for Deepin
+ Uses Fedora's systemd-oomd PSI and swap policy to open a force-quit
+ dialog in native Deepin styling before the kernel OOM killer acts.
+ Applications are grouped by DDE app cgroup, including terminal jobs. The
+ dialog can freeze, resume, or kill a selected application cgroup, and
+ closing it resumes every frozen group. It follows the system light and
+ dark theme and accent color.
  The user service protects its own cgroup with memory.min so the dialog
  still appears under extreme memory pressure.
  .

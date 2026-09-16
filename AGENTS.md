@@ -6,7 +6,7 @@ These instructions apply to the entire `deepin-liferaft` repository.
 
 ## Project
 
-Deepin Liferaft is a single-binary DTK 6 application. A systemd user service runs it with `--hidden`; sustained Fedora-style systemd-oomd pressure or swap conditions open a macOS-style force-quit dialog. Application boundaries are DDE `app-DDE-*` launch groups and `app-*.scope` scopes, both under `user@UID.service/app.slice`.
+Deepin Liferaft is a single-binary DTK 6 application. A systemd user service runs it with `--hidden`; sustained Fedora-style systemd-oomd pressure or swap conditions open a DTK force-quit dialog. Application boundaries are DDE `app-DDE-*` launch groups and `app-*.scope` scopes, both under `user@UID.service/app.slice`.
 
 ## Layout
 
@@ -37,7 +37,7 @@ Memory-pressure code is safety critical. Preserve all of these invariants:
 - Resume all owned cgroups before accepting a window close, normal process exit, `SIGTERM`, or `SIGINT`.
 - If thaw fails, retain ownership and retry. Never silently clear the recovery set.
 - After `cgroup.kill`, thaw a surviving cgroup before releasing ownership.
-- Keep frozen applications visible in the table even when they fall outside the normal top-ten memory list.
+- Keep frozen applications visible in the list even when they fall outside the normal top-ten memory list.
 
 Do not test freeze/kill behavior on real user applications. Use a disposable systemd user cgroup or temporary fake control files.
 
@@ -74,16 +74,27 @@ The packaged defaults protect the monitor itself (`deepin-liferaft`), the screen
 
 Keep hidden mode cheap:
 
-- Do not construct table widgets, labels, buttons, or load desktop icons before the dialog is shown.
+- Do not construct list widgets, labels, buttons, or load desktop icons before the dialog is shown.
 - Do not scan all application cgroups while pressure is low and the dialog is hidden.
 - Cache desktop metadata; it is static for the lifetime of the daemon.
 - Do not add a dependency for parsing or logic available through Qt, libc, procfs, or cgroup v2.
 
 Measure changes with `/proc/PID/smaps_rollup`, not RSS alone. Report PSS and private dirty memory using equal startup timing.
 
+## UI Style
+
+The dialog follows Deepin's design language, not macOS alert styling. Preserve these conventions:
+
+- Use DTK widgets and the DTK palette (`DPalette`, `DPaletteHelper`) and font sizes (`DFontSizeManager`). Never hard-code text or background colors, and never leave margins or a layout that only suits one theme; the dialog must follow light and dark themes and the system accent color automatically.
+- The application list is a `DListView` with the `AppRowDelegate` (`DStyledItemDelegate`) that draws the row background and content itself, copying `BaseTableView::drawRow()` from deepin-system-monitor: even rows use `DPalette::AlternateBase`, odd rows `DPalette::Base`, the selected row `DPalette::Highlight`, a hovered row `DStyle::adjustColor(base, 0, 0, -10)`, all rounded by `DStyle::PM_FrameRadius`. `WA_Hover` is enabled on the viewport so rows highlight under the pointer. Update rows in the model instead of rebuilding the list while the dialog is open.
+- Window chrome comes from `DMainWindow`/`DTitlebar`. The alert header is the rounded `AlertBanner` with its `AlertBadge`; the footer is a `DHorizontalLine` above right-aligned `Resume` (`DPushButton`) and `Force Quit` (`DWarningButton`) buttons.
+- For visual checks, `w.grab()` on `QT_QPA_PLATFORM=offscreen` captures the client area, but DTK resolves its palette from the platform theme, which the offscreen plugin does not provide. Set `DGuiApplicationHelper::standardPalette(LightType | DarkType)` with both `setApplicationPalette()` and `qApp->setPalette()` before showing the window to get a faithful light or dark snapshot.
+
 ## Translations
 
-User-visible strings use Qt `tr()` / `QCoreApplication::translate()` so they are translatable. Source `.ts` files live in `translations/` (`zh_CN`, `en_US`, `ja_JP`, `ko_KR`); CMake compiles them to `.qm` via `qt6_add_lrelease` and installs them to `share/deepin-liferaft/translations/`. Building requires Qt 6 Linguist tools (`qt6-tools-dev`, `qt6-l10n-tools`). After adding or changing user-visible strings, regenerate the `.ts` files with `lupdate` before committing.
+User-visible strings use Qt `tr()` / `QCoreApplication::translate()` so they are translatable. Source `.ts` files live in `translations/` (`zh_CN`, `en_US`, `ja_JP`, `ko_KR`); CMake compiles them to `.qm` via `qt6_add_lrelease` and installs them to `share/deepin-liferaft/translations/`. Building requires Qt 6 Linguist tools (`qt6-tools-dev`, `qt6-l10n-tools`). After adding or changing user-visible strings, regenerate the `.ts` files with `cd translations && /usr/lib/qt6/bin/lupdate -no-obsolete ../main.cpp -ts *.ts` and translate the new entries in every catalog before committing.
+
+`DApplication` resolves catalogs from `/usr/share/deepin-liferaft/translations` (and `~/.local/share/deepin-liferaft/translations`) before the executable directory, so a binary built in `obj-*/` keeps using the installed catalogs. Copy the rebuilt `.qm` files into `~/.local/share/deepin-liferaft/translations/`, or install the package, to see new strings in a local run.
 
 ## Logging
 
