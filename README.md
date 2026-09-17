@@ -16,6 +16,7 @@ Deepin Liferaft provides a DTK-native out-of-memory dialog for Deepin. It detect
 - Reads localized names and icons from XDG desktop files, including the Linglong export directory at `/var/lib/linglong/entries/apps/share/applications`.
 - Ranks pressure candidates by the latest `pgscan` delta and then memory, or ranks swap candidates by `memory.swap.current`.
 - Freezes up to three candidates with `cgroup.freeze`; Resume thaws the selected group and Force Quit uses `cgroup.kill`.
+- Asks for confirmation when the window is closed while applications are still paused, and only resumes them once the close is confirmed. Cancelling keeps the window and the paused applications as they are.
 - Waits 15 seconds after an action before showing another dialog.
 
 Detection follows Fedora's systemd-oomd policy while the presentation follows Deepin's design language. systemd-oomd kills one cgroup immediately; Deepin Liferaft pauses up to three candidates and leaves the final choice to the user.
@@ -27,6 +28,7 @@ The window is a `DMainWindow` with a DTK titlebar. Its content follows the DDE s
 - A rounded alert banner with a warning badge, a title, and a short explanation.
 - A `DListView` of applications with the same alternating row shading as Deepin System Monitor — even rows use `DPalette::AlternateBase`, odd rows `DPalette::Base` — plus an accent-colored selection and a hover highlight. Under `Application` and `Memory` column captions, each row shows the application icon, its localized name, a `Paused` tag when the cgroup is frozen, and right-aligned memory usage.
 - A separator above a right-aligned button row: `Resume` for the selected frozen application and `Force Quit`, which uses the destructive warning button style.
+- A `DDialog` confirmation before the window closes while applications are still paused, since closing resumes them. `Cancel` is the default button, so a stray Enter or Escape keeps the paused applications paused.
 - Colors come from the DTK palette, so the dialog follows light and dark themes and the system accent color without hard-coded values.
 
 ## Whitelist

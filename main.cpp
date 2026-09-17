@@ -3,6 +3,7 @@
 #include <sys/signalfd.h>
 
 #include <DApplication>
+#include <DDialog>
 #include <DFontSizeManager>
 #include <DHorizontalLine>
 #include <DLabel>
@@ -481,6 +482,14 @@ static bool whitelistSelfTest()
     return merged == QSet<QString>({ "alpha", "beta" });
 }
 
+// Closing the dialog thaws every cgroup this process froze, so an accidental
+// close hands the paused applications straight back to the memory pressure that
+// paused them. Ask for confirmation while such cgroups are still owned.
+static bool needsCloseConfirmation(int frozenCount, bool confirmed)
+{
+    return frozenCount > 0 && !confirmed;
+}
+
 static bool selfTest()
 {
     const SystemMemory highSwap{ 100, 9, 100, 9, true };
@@ -501,7 +510,10 @@ static bool selfTest()
             && selectTrigger(0, 0, false, highSwap, {}) == Trigger::None
             && pgscanDelta(100, 101) == 1 && pgscanDelta(100, std::nullopt) == 0
             && pgscanDelta(std::nullopt, 101) == 0 && freezerSelfTest() && whitelistSelfTest()
-            && fmtSize(56727962) == "54.1 MB" && fmtSize(1610612736) == "1.5 GB";
+            && !needsCloseConfirmation(0, false) && !needsCloseConfirmation(0, true)
+            && needsCloseConfirmation(1, false) && needsCloseConfirmation(3, false)
+            && !needsCloseConfirmation(1, true) && fmtSize(56727962) == "54.1 MB"
+            && fmtSize(1610612736) == "1.5 GB";
 }
 
 static const int APP_NAME_ROLE = Qt::UserRole + 1;
@@ -712,31 +724,39 @@ public:
     }
 };
 
+// Answer to a quit request: Allow lets the application exit, Retry repeats the
+// request after a thaw that failed, WaitForUser keeps the application alive
+// while the close confirmation waits for an answer.
+enum class QuitRequest { Allow, Retry, WaitForUser };
+
 class LiferaftApplication : public DApplication
 {
 public:
     using DApplication::DApplication;
 
-    void setQuitGuard(std::function<bool()> guard) { m_quitGuard = std::move(guard); }
+    void setQuitGuard(std::function<QuitRequest()> guard) { m_quitGuard = std::move(guard); }
 
 protected:
     bool event(QEvent *event) override
     {
-        if (event->type() == QEvent::Quit && m_quitGuard && !m_quitGuard()) {
-            if (!m_quitRetryScheduled) {
-                m_quitRetryScheduled = true;
-                QTimer::singleShot(250, this, [this] {
-                    m_quitRetryScheduled = false;
-                    QCoreApplication::quit();
-                });
+        if (event->type() == QEvent::Quit && m_quitGuard) {
+            const QuitRequest answer = m_quitGuard();
+            if (answer != QuitRequest::Allow) {
+                if (answer == QuitRequest::Retry && !m_quitRetryScheduled) {
+                    m_quitRetryScheduled = true;
+                    QTimer::singleShot(250, this, [this] {
+                        m_quitRetryScheduled = false;
+                        QCoreApplication::quit();
+                    });
+                }
+                return true;
             }
-            return true;
         }
         return DApplication::event(event);
     }
 
 private:
-    std::function<bool()> m_quitGuard;
+    std::function<QuitRequest()> m_quitGuard;
     bool m_quitRetryScheduled = false;
 };
 
@@ -1062,6 +1082,16 @@ public:
 
     bool unfreezeAll() { return thawOwned(m_frozen); }
 
+    // A quit request from the titlebar menu or from any other quit() call takes
+    // the same confirmation as closing the window while cgroups are paused.
+    QuitRequest handleQuitRequest()
+    {
+        if (!m_shutdownRequested && isVisible() && !confirmClose())
+            return QuitRequest::WaitForUser;
+        m_shutdownRequested = true;
+        return unfreezeAll() ? QuitRequest::Allow : QuitRequest::Retry;
+    }
+
     void requestShutdown()
     {
         if (m_shutdownRequested)
@@ -1148,6 +1178,9 @@ protected:
     void showEvent(QShowEvent *event) override
     {
         ensureUi();
+        // A window that appears again belongs to a new pressure episode: ask
+        // again before this one closes with applications still paused.
+        m_closeConfirmed = false;
         sampleApps();
         refresh();
         DMainWindow::showEvent(event);
@@ -1155,6 +1188,13 @@ protected:
 
     void closeEvent(QCloseEvent *event) override
     {
+        // A shutdown from SIGTERM or SIGINT resumes the paused applications
+        // without asking; there is no user in front of a service stop.
+        if (!m_shutdownRequested && !confirmClose()) {
+            event->ignore();
+            return;
+        }
+
         qInfo() << tr("Window closing, thawing %1 frozen cgroup(s)").arg(m_frozen.size());
         if (!unfreezeAll()) {
             qWarning() << tr("Close blocked: thaw failed, retrying");
@@ -1171,6 +1211,38 @@ protected:
     }
 
 private:
+    // Closing resumes every application this process paused, so a close that
+    // was not meant as such must be confirmed first. Returns true when the
+    // close may proceed.
+    bool confirmClose()
+    {
+        if (!needsCloseConfirmation(m_frozen.size(), m_closeConfirmed))
+            return true;
+        if (m_confirmingClose) {
+            // A prompt is already on screen; keep the window until it is answered.
+            return false;
+        }
+
+        DDialog prompt(this);
+        prompt.setTitle(tr("%n application(s) are still paused", nullptr, m_frozen.size()));
+        prompt.setMessage(tr("Closing the window resumes them immediately, and the system may "
+                             "become unresponsive again."));
+        prompt.addButton(tr("Cancel"), true, DDialog::ButtonNormal);
+        prompt.addButton(tr("Close and Resume"), false, DDialog::ButtonWarning);
+
+        m_confirmingClose = true;
+        const int choice = prompt.exec();
+        m_confirmingClose = false;
+
+        if (choice != 1) {
+            qInfo() << tr("Close cancelled, %1 frozen cgroup(s) stay paused").arg(m_frozen.size());
+            return false;
+        }
+        m_closeConfirmed = true;
+        qInfo() << tr("Close confirmed, resuming %1 frozen cgroup(s)").arg(m_frozen.size());
+        return true;
+    }
+
     DListView *m_view = nullptr;
     QStandardItemModel *m_model = nullptr;
     QStackedLayout *m_listPages = nullptr;
@@ -1184,6 +1256,8 @@ private:
     quint64 m_lastUserPgscan = 0;
     bool m_hasLastUserPgscan = false;
     bool m_shutdownRequested = false;
+    bool m_confirmingClose = false;
+    bool m_closeConfirmed = false;
     bool m_lastSamplesInvalid = false;
     QElapsedTimer m_pressureSince;
     QElapsedTimer m_reclaimSeen;
@@ -1222,7 +1296,7 @@ int main(int argc, char *argv[])
                        .arg(hidden ? QStringLiteral("hidden") : QStringLiteral("foreground"));
     ForceQuitWindow w(signalFd, whitelist);
     a.setQuitGuard([&w] {
-        return w.unfreezeAll();
+        return w.handleQuitRequest();
     });
     if (!hidden)
         w.show();

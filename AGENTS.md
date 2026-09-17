@@ -34,7 +34,7 @@ Memory-pressure code is safety critical. Preserve all of these invariants:
 - Never freeze the cgroup containing Deepin Liferaft.
 - Read `cgroup.freeze` before freezing. Do not claim or thaw a cgroup already frozen by another component.
 - Track every cgroup successfully frozen by this process.
-- Resume all owned cgroups before accepting a window close, normal process exit, `SIGTERM`, or `SIGINT`.
+- Resume all owned cgroups before accepting a window close, normal process exit, `SIGTERM`, or `SIGINT`. When the window is closed while it still owns frozen cgroups, confirm with the user first (`needsCloseConfirmation`, covered by `--self-test`) and keep the window open if they cancel. `SIGTERM`, `SIGINT`, and service stops thaw without asking.
 - If thaw fails, retain ownership and retry. Never silently clear the recovery set.
 - After `cgroup.kill`, thaw a surviving cgroup before releasing ownership.
 - Keep frozen applications visible in the list even when they fall outside the normal top-ten memory list.
@@ -87,7 +87,7 @@ The dialog follows Deepin's design language, not macOS alert styling. Preserve t
 
 - Use DTK widgets and the DTK palette (`DPalette`, `DPaletteHelper`) and font sizes (`DFontSizeManager`). Never hard-code text or background colors, and never leave margins or a layout that only suits one theme; the dialog must follow light and dark themes and the system accent color automatically.
 - The application list is a `DListView` with the `AppRowDelegate` (`DStyledItemDelegate`) that draws the row background and content itself, copying `BaseTableView::drawRow()` from deepin-system-monitor: even rows use `DPalette::AlternateBase`, odd rows `DPalette::Base`, the selected row `DPalette::Highlight`, a hovered row `DStyle::adjustColor(base, 0, 0, -10)`, all rounded by `DStyle::PM_FrameRadius`. `WA_Hover` is enabled on the viewport so rows highlight under the pointer, and `Application` / `Memory` captions above the list line up with the row content rect (`LIST_CONTENT_MARGIN`). Update rows in the model instead of rebuilding the list while the dialog is open.
-- Window chrome comes from `DMainWindow`/`DTitlebar`. The alert header is the rounded `AlertBanner` with its `AlertBadge`; the footer is a `DHorizontalLine` above right-aligned `Resume` (`DPushButton`) and `Force Quit` (`DWarningButton`) buttons.
+- Window chrome comes from `DMainWindow`/`DTitlebar`. The alert header is the rounded `AlertBanner` with its `AlertBadge`; the footer is a `DHorizontalLine` above right-aligned `Resume` (`DPushButton`) and `Force Quit` (`DWarningButton`) buttons. Closing while cgroups are still paused asks for confirmation through a DTK `DDialog` whose default button is `Cancel`.
 - For visual checks, `w.grab()` on `QT_QPA_PLATFORM=offscreen` captures the client area, but DTK resolves its palette from the platform theme, which the offscreen plugin does not provide. Set `DGuiApplicationHelper::standardPalette(LightType | DarkType)` with both `setApplicationPalette()` and `qApp->setPalette()` before showing the window to get a faithful light or dark snapshot.
 
 ## Translations

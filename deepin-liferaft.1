@@ -20,6 +20,8 @@ buttons.
 It follows the system light or dark theme and accent color.
 .PP
 Closing the dialog, stopping the service, or sending SIGTERM or SIGINT thaws every cgroup frozen by this process before exit.
+While applications are still paused, closing the window asks for confirmation first, because closing resumes them; cancelling keeps the window and the paused applications.
+A service stop or signal has no one to answer a prompt, so it thaws and exits without asking.
 The systemd user service sets
 .B MemoryMin=16M
 so the monitor's own cgroup keeps hard reclaim protection and can still poll PSI and raise the dialog under extreme memory pressure (requires systemd 253 or newer, and ancestor cgroups with memory.min configured, as Deepin sessions provide).
@@ -39,6 +41,7 @@ The whitelist is loaded once at startup; restart the service after editing.
 .TP
 .B --hidden
 Run the pressure monitor without showing the dialog at startup. This is the mode used by the systemd user service.
+A SIGTERM or SIGINT that stops the service resumes the paused applications without the interactive confirmation.
 .TP
 .B --self-test
 Run built-in policy, parsing, formatting, and freezer ownership checks, then exit with status zero on success.
