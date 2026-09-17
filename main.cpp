@@ -510,6 +510,7 @@ static const int MEMORY_ROLE = Qt::UserRole + 3;
 static const int CGROUP_ROLE = Qt::UserRole + 4;
 
 static const int APP_ROW_HEIGHT = 44;
+static const int LIST_CONTENT_MARGIN = 12;
 static const int MAX_LIST_ROWS = 10;
 
 // Warning badge used by the alert banner: the themed warning icon on a soft
@@ -747,7 +748,7 @@ public:
         : m_whitelist(std::move(whitelist))
     {
         setWindowTitle(QGuiApplication::applicationDisplayName());
-        resize(560, 560);
+        resize(560, 620);
         setMinimumSize(520, 480);
 
         if (const auto pgscan = memoryStatValue(userCgroupPath(), "pgscan")) {
@@ -803,9 +804,32 @@ public:
         m_view->setItemDelegate(new AppRowDelegate(m_view));
         m_view->setItemSize(QSize(0, APP_ROW_HEIGHT));
         m_view->setItemSpacing(0);
-        m_view->setItemMargins(QMargins(12, 6, 12, 6));
+        m_view->setItemMargins(QMargins(LIST_CONTENT_MARGIN, 6, LIST_CONTENT_MARGIN, 6));
         m_model = new QStandardItemModel(m_view);
         m_view->setModel(m_model);
+
+        // Column captions, aligned with the content rect of every row.
+        auto *captions = new QWidget(central);
+        auto *captionLayout = new QHBoxLayout(captions);
+        captionLayout->setContentsMargins(LIST_CONTENT_MARGIN, 0, LIST_CONTENT_MARGIN, 0);
+        captionLayout->setSpacing(10);
+        auto *nameCaption = new DLabel(tr("Application"), captions);
+        auto *memoryCaption = new DLabel(tr("Memory"), captions);
+        for (auto *caption : { nameCaption, memoryCaption }) {
+            caption->setForegroundRole(DPalette::TextTips);
+            DFontSizeManager::instance()->bind(caption, DFontSizeManager::T9);
+        }
+        captionLayout->addWidget(nameCaption);
+        captionLayout->addStretch();
+        captionLayout->addWidget(memoryCaption);
+
+        auto *listPage = new QWidget(central);
+        auto *listLayout = new QVBoxLayout(listPage);
+        listLayout->setContentsMargins(0, 0, 0, 0);
+        listLayout->setSpacing(8);
+        listLayout->addWidget(captions);
+        listLayout->addWidget(new DHorizontalLine(listPage));
+        listLayout->addWidget(m_view, 1);
 
         auto *emptyLabel = new DLabel(tr("No applications to show"), central);
         emptyLabel->setForegroundRole(DPalette::TextTips);
@@ -815,7 +839,7 @@ public:
         emptyLayout->addWidget(emptyLabel, 0, Qt::AlignCenter);
 
         m_listPages = new QStackedLayout;
-        m_listPages->addWidget(m_view);
+        m_listPages->addWidget(listPage);
         m_listPages->addWidget(emptyPage);
         auto *listHost = new QWidget(central);
         listHost->setLayout(m_listPages);

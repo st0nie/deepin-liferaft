@@ -25,7 +25,7 @@ Detection follows Fedora's systemd-oomd policy while the presentation follows De
 The window is a `DMainWindow` with a DTK titlebar. Its content follows the DDE style:
 
 - A rounded alert banner with a warning badge, a title, and a short explanation.
-- A `DListView` of applications with the same alternating row shading as Deepin System Monitor — even rows use `DPalette::AlternateBase`, odd rows `DPalette::Base` — plus an accent-colored selection and a hover highlight. Each row shows the application icon, its localized name, a `Paused` tag when the cgroup is frozen, and right-aligned memory usage.
+- A `DListView` of applications with the same alternating row shading as Deepin System Monitor — even rows use `DPalette::AlternateBase`, odd rows `DPalette::Base` — plus an accent-colored selection and a hover highlight. Under `Application` and `Memory` column captions, each row shows the application icon, its localized name, a `Paused` tag when the cgroup is frozen, and right-aligned memory usage.
 - A separator above a right-aligned button row: `Resume` for the selected frozen application and `Force Quit`, which uses the destructive warning button style.
 - Colors come from the DTK palette, so the dialog follows light and dark themes and the system accent color without hard-coded values.
 
