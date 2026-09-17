@@ -1,10 +1,10 @@
-# Deepin Liferaft
+# Memory Liferaft
 
 <p align="center">
-  <img src="data/icons/deepin-liferaft.svg" width="128" alt="Deepin Liferaft icon">
+  <img src="data/icons/deepin-liferaft.svg" width="128" alt="Memory Liferaft icon">
 </p>
 
-Deepin Liferaft provides a DTK-native out-of-memory dialog for Deepin. It detects sustained memory pressure, pauses application cgroups before the desktop becomes unusable, and lets the user resume or force quit an application with the system light or dark theme and accent color.
+Memory Liferaft provides a DTK-native out-of-memory dialog for Deepin. It detects sustained memory pressure, pauses application cgroups before the desktop becomes unusable, and lets the user resume or force quit an application with the system light or dark theme and accent color.
 
 ## Behavior
 
@@ -19,7 +19,7 @@ Deepin Liferaft provides a DTK-native out-of-memory dialog for Deepin. It detect
 - Asks for confirmation when the window is closed while applications are still paused, and only resumes them once the close is confirmed. Cancelling keeps the window and the paused applications as they are.
 - Waits 15 seconds after an action before showing another dialog.
 
-Detection follows Fedora's systemd-oomd policy while the presentation follows Deepin's design language. systemd-oomd kills one cgroup immediately; Deepin Liferaft pauses up to three candidates and leaves the final choice to the user.
+Detection follows Fedora's systemd-oomd policy while the presentation follows Deepin's design language. systemd-oomd kills one cgroup immediately; Memory Liferaft pauses up to three candidates and leaves the final choice to the user.
 
 ## Dialog
 
@@ -53,7 +53,7 @@ The startup log records how many entries were loaded.
 
 ## Safety
 
-Deepin Liferaft only thaws cgroups it froze itself. It skips cgroups already frozen by another component and never freezes the cgroup containing its own process.
+Memory Liferaft only thaws cgroups it froze itself. It skips cgroups already frozen by another component and never freezes the cgroup containing its own process.
 
 Closing the dialog thaws every owned cgroup before the window closes. If a thaw temporarily fails, the window remains open and retries. `SIGTERM` and `SIGINT`, including `systemctl --user stop`, are received through `signalfd` so owned cgroups are thawed before process exit.
 
@@ -63,7 +63,7 @@ The systemd user service sets `MemoryMin=16M`, which gives the monitor's own cgr
 
 ## Logging
 
-Deepin Liferaft logs through DTK's `DLog` (journald appender). Under the systemd user service messages go to the user journal; run from a terminal, they also appear on stderr. Log lines carry a timestamp, level, source file, function, and line.
+Memory Liferaft logs through DTK's `DLog` (journald appender). Under the systemd user service messages go to the user journal; run from a terminal, they also appear on stderr. Log lines carry a timestamp, level, source file, function, and line.
 
 Inspect the daemon's status:
 
@@ -193,4 +193,4 @@ Linux PSI and systemd cgroups replace macOS VM-pressure and application lifecycl
 
 ## License
 
-Deepin Liferaft is licensed under [GPL-3.0-or-later](LICENSE).
+Memory Liferaft is licensed under [GPL-3.0-or-later](LICENSE).

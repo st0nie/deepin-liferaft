@@ -407,8 +407,8 @@ static QString memoryLine(const SystemMemory &memory)
 {
     if (!memory.valid)
         return QCoreApplication::translate("main", "System memory information unavailable");
-    return QCoreApplication::translate("main", "Total %1 · Available %2")
-            .arg(fmtSize(memory.memTotal), fmtSize(memory.memAvailable));
+    return QCoreApplication::translate("main", "Available memory %1 · Total memory %2")
+            .arg(fmtSize(memory.memAvailable), fmtSize(memory.memTotal));
 }
 
 // Swap counts as well, because the pressure policy looks at it. Board without
@@ -419,8 +419,8 @@ static QString swapLine(const SystemMemory &memory)
         return QString();
     if (memory.swapTotal == 0)
         return QCoreApplication::translate("main", "Swap not configured");
-    return QCoreApplication::translate("main", "Swap total %1 · Available %2")
-            .arg(fmtSize(memory.swapTotal), fmtSize(memory.swapFree));
+    return QCoreApplication::translate("main", "Available swap %1 · Total swap %2")
+            .arg(fmtSize(memory.swapFree), fmtSize(memory.swapTotal));
 }
 
 static QString triggerName(Trigger trigger)
@@ -542,8 +542,8 @@ static bool selfTest()
             && needsCloseConfirmation(1, false) && needsCloseConfirmation(3, false)
             && !needsCloseConfirmation(1, true) && fmtSize(56727962) == "54.1 MB"
             && fmtSize(1610612736) == "1.5 GB"
-            && memoryLine(boardWithSwap) == "Total 32.0 GB · Available 4.0 GB"
-            && swapLine(boardWithSwap) == "Swap total 8.0 GB · Available 1.0 GB"
+            && memoryLine(boardWithSwap) == "Available memory 4.0 GB · Total memory 32.0 GB"
+            && swapLine(boardWithSwap) == "Available swap 1.0 GB · Total swap 8.0 GB"
             && swapLine(boardWithoutSwap) == "Swap not configured"
             && memoryLine({}) == "System memory information unavailable" && swapLine({}).isEmpty();
 }
@@ -869,9 +869,9 @@ public:
         vbox->setSpacing(12);
 
         m_banner = new AlertBanner(
-                tr("Not enough memory"),
-                tr("To keep the desktop responsive, applications using the most memory were "
-                   "paused. Resume the ones you still need, or force quit them."),
+                tr("Low memory"),
+                tr("The following apps have been paused to keep your system responsive. "
+                   "Resume them, or force quit to free up memory."),
                 central);
         vbox->addWidget(m_banner);
 
@@ -932,8 +932,10 @@ public:
         auto *buttons = new QHBoxLayout;
         buttons->setSpacing(8);
         m_resumeBtn = new DPushButton(tr("Resume"), central);
+        m_resumeBtn->setAccessibleName(tr("Resume app"));
         m_killBtn = new DWarningButton(central);
         m_killBtn->setText(tr("Force Quit"));
+        m_killBtn->setAccessibleName(tr("Force quit app"));
         buttons->addStretch();
         buttons->addWidget(m_resumeBtn);
         buttons->addWidget(m_killBtn);
@@ -1354,7 +1356,7 @@ int main(int argc, char *argv[])
     LiferaftApplication a(argc, argv);
     a.setApplicationName("deepin-liferaft");
     a.loadTranslator();
-    a.setApplicationDisplayName(QCoreApplication::translate("main", "Deepin Liferaft"));
+    a.setApplicationDisplayName(QCoreApplication::translate("main", "Memory Liferaft"));
     a.setProductIcon(QIcon(QStringLiteral(":/icons/deepin-liferaft.svg")));
     a.setApplicationVersion(QStringLiteral(LIFERAFT_VERSION));
     a.setApplicationDescription(
@@ -1370,7 +1372,7 @@ int main(int argc, char *argv[])
     qInfo() << QCoreApplication::translate("main", "Application whitelist: %1 entries")
                        .arg(whitelist.size());
     a.setQuitOnLastWindowClosed(!hidden);
-    qInfo() << QCoreApplication::translate("main", "Deepin Liferaft started: pid=%1 mode=%2")
+    qInfo() << QCoreApplication::translate("main", "Memory Liferaft started: pid=%1 mode=%2")
                        .arg(getpid())
                        .arg(hidden ? QStringLiteral("hidden") : QStringLiteral("foreground"));
     ForceQuitWindow w(signalFd, whitelist);

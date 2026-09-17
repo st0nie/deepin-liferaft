@@ -6,7 +6,7 @@ These instructions apply to the entire `deepin-liferaft` repository.
 
 ## Project
 
-Deepin Liferaft is a single-binary DTK 6 application. A systemd user service runs it with `--hidden`; sustained Fedora-style systemd-oomd pressure or swap conditions open a DTK force-quit dialog. Application boundaries are DDE `app-DDE-*` launch groups and `app-*.scope` scopes, both under `user@UID.service/app.slice`.
+Memory Liferaft (`deepin-liferaft`, Chinese 内存救生筏) is a single-binary DTK 6 application. A systemd user service runs it with `--hidden`; sustained Fedora-style systemd-oomd pressure or swap conditions open a DTK force-quit dialog. Application boundaries are DDE `app-DDE-*` launch groups and `app-*.scope` scopes, both under `user@UID.service/app.slice`.
 
 ## Layout
 
@@ -31,7 +31,7 @@ Memory-pressure code is safety critical. Preserve all of these invariants:
 
 - Parse cgroup `memory.pressure` `full avg10`, not `some`.
 - Treat failed or incomplete PSI, `memory.stat`, cgroup value, and `/proc/meminfo` reads as invalid samples. Never convert failure into zero usage or a trigger. The dialog's memory and swap lines follow the same rule: an invalid sample prints no numbers.
-- Never freeze the cgroup containing Deepin Liferaft.
+- Never freeze the cgroup containing Memory Liferaft itself.
 - Read `cgroup.freeze` before freezing. Do not claim or thaw a cgroup already frozen by another component.
 - Track every cgroup successfully frozen by this process.
 - Resume all owned cgroups before accepting a window close, normal process exit, `SIGTERM`, or `SIGINT`. When the window is closed while it still owns frozen cgroups, confirm with the user first (`needsCloseConfirmation`, covered by `--self-test`) and keep the window open if they cancel. `SIGTERM`, `SIGINT`, and service stops thaw without asking.

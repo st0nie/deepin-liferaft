@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=Deepin Liferaft
-Name[zh_CN]=内存救生圈
-Comment=Recover from application memory pressure
-Comment[zh_CN]=在应用内存压力过高时恢复系统响应
+Name=Memory Liferaft
+Name[zh_CN]=内存救生筏
+Comment=When memory runs critically low, pauses the heaviest applications and leaves the decision to you, keeping the system responsive
+Comment[zh_CN]=内存严重不足时，先暂停占用最高的应用并交由您处理，避免系统卡死
 Exec=deepin-liferaft
 Icon=deepin-liferaft
 Terminal=false
