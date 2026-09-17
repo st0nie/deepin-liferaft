@@ -10,7 +10,7 @@ deepin-liferaft \- monitor memory pressure and present a force-quit dialog
 .B deepin-liferaft
 monitors the current systemd user cgroup for Fedora-style systemd-oomd memory pressure and swap conditions.
 When pressure remains unsafe, it freezes selected DDE application cgroups and opens a DTK dialog that can resume or force quit them.
-The dialog uses native Deepin styling: a rounded alert banner, an application list that tags frozen cgroups with
+The dialog uses native Deepin styling: a rounded alert banner that reports the machine's total and available memory and its swap, an application list that tags frozen cgroups with
 .BR Paused ,
 and right-aligned
 .B Resume
@@ -18,6 +18,7 @@ and
 .B "Force Quit"
 buttons.
 It follows the system light or dark theme and accent color.
+The memory and swap figures come from the same one-second sample as the pressure decision, so they match what triggered the dialog.
 .PP
 Closing the dialog, stopping the service, or sending SIGTERM or SIGINT thaws every cgroup frozen by this process before exit.
 While applications are still paused, closing the window asks for confirmation first, because closing resumes them; cancelling keeps the window and the paused applications.

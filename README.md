@@ -25,7 +25,7 @@ Detection follows Fedora's systemd-oomd policy while the presentation follows De
 
 The window is a `DMainWindow` with a DTK titlebar. Its content follows the DDE style:
 
-- A rounded alert banner with a warning badge, a title, and a short explanation.
+- A rounded alert banner with a warning badge, a title, a short explanation, and the machine's total and available memory plus its swap. The numbers follow the same one-second sample as the trigger policy, so they show what the pressure decision sees; a board without swap says so, and an unreadable `/proc/meminfo` shows no numbers at all.
 - A `DListView` of applications with the same alternating row shading as Deepin System Monitor — even rows use `DPalette::AlternateBase`, odd rows `DPalette::Base` — plus an accent-colored selection and a hover highlight. Under `Application` and `Memory` column captions, each row shows the application icon, its localized name, a `Paused` tag when the cgroup is frozen, and right-aligned memory usage.
 - A separator above a right-aligned button row: `Resume` for the selected frozen application and `Force Quit`, which uses the destructive warning button style.
 - A `DDialog` confirmation before the window closes while applications are still paused, since closing resumes them. `Cancel` is the default button, so a stray Enter or Escape keeps the paused applications paused.

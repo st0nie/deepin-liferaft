@@ -401,6 +401,28 @@ static QString fmtSize(quint64 bytes)
     return QString::number(bytes / 1048576.0, 'f', 1) + " MB";
 }
 
+// What the machine has and what is left of it. An invalid sample prints no
+// numbers at all: a zero here would read like a real measurement.
+static QString memoryLine(const SystemMemory &memory)
+{
+    if (!memory.valid)
+        return QCoreApplication::translate("main", "System memory information unavailable");
+    return QCoreApplication::translate("main", "Total %1 · Available %2")
+            .arg(fmtSize(memory.memTotal), fmtSize(memory.memAvailable));
+}
+
+// Swap counts as well, because the pressure policy looks at it. Board without
+// swap says so instead of showing two zeroes.
+static QString swapLine(const SystemMemory &memory)
+{
+    if (!memory.valid)
+        return QString();
+    if (memory.swapTotal == 0)
+        return QCoreApplication::translate("main", "Swap not configured");
+    return QCoreApplication::translate("main", "Swap total %1 · Available %2")
+            .arg(fmtSize(memory.swapTotal), fmtSize(memory.swapFree));
+}
+
 static QString triggerName(Trigger trigger)
 {
     switch (trigger) {
@@ -494,6 +516,12 @@ static bool selfTest()
 {
     const SystemMemory highSwap{ 100, 9, 100, 9, true };
     const SystemMemory atLimit{ 100, 10, 100, 10, true };
+    const SystemMemory boardWithSwap{ 34359738368ull,
+                                      4294967296ull,
+                                      8589934592ull,
+                                      1073741824ull,
+                                      true };
+    const SystemMemory boardWithoutSwap{ 34359738368ull, 4294967296ull, 0, 0, true };
     const QList<Proc> swapCandidate{ { {}, 1, 6, 0, 0, {}, {} } };
     const QList<Proc> exactSwapLimit{ { {}, 1, 5, 0, 0, {}, {} } };
     return unescapeUnit("google\\x2dchrome") == "google-chrome"
@@ -513,7 +541,11 @@ static bool selfTest()
             && !needsCloseConfirmation(0, false) && !needsCloseConfirmation(0, true)
             && needsCloseConfirmation(1, false) && needsCloseConfirmation(3, false)
             && !needsCloseConfirmation(1, true) && fmtSize(56727962) == "54.1 MB"
-            && fmtSize(1610612736) == "1.5 GB";
+            && fmtSize(1610612736) == "1.5 GB"
+            && memoryLine(boardWithSwap) == "Total 32.0 GB · Available 4.0 GB"
+            && swapLine(boardWithSwap) == "Swap total 8.0 GB · Available 1.0 GB"
+            && swapLine(boardWithoutSwap) == "Swap not configured"
+            && memoryLine({}) == "System memory information unavailable" && swapLine({}).isEmpty();
 }
 
 static const int APP_NAME_ROLE = Qt::UserRole + 1;
@@ -589,7 +621,31 @@ public:
 
         textLayout->addWidget(titleLabel);
         textLayout->addWidget(messageLabel);
+        textLayout->addSpacing(4);
+
+        m_memoryLabel = new DLabel(this);
+        m_swapLabel = new DLabel(this);
+        for (auto *label : { m_memoryLabel, m_swapLabel }) {
+            label->setWordWrap(true);
+            label->setElideMode(Qt::ElideNone);
+            // Plain text rather than the tips color, so the numbers read as data
+            // instead of more prose.
+            label->setForegroundRole(DPalette::Text);
+            DFontSizeManager::instance()->bind(label, DFontSizeManager::T9);
+            textLayout->addWidget(label);
+        }
         layout->addLayout(textLayout, 1);
+    }
+
+    // Machine memory and swap under the alert, refreshed with every poll. An
+    // empty swap line hides that row.
+    void setMemoryStatus(const QString &memory, const QString &swap)
+    {
+        if (m_memoryLabel->text() != memory)
+            m_memoryLabel->setText(memory);
+        m_swapLabel->setVisible(!swap.isEmpty());
+        if (m_swapLabel->text() != swap)
+            m_swapLabel->setText(swap);
     }
 
 protected:
@@ -603,6 +659,11 @@ protected:
         const int radius = DStyleHelper(style()).pixelMetric(DStyle::PM_FrameRadius);
         painter.drawRoundedRect(rect(), radius, radius);
     }
+
+private:
+    DLabel *m_memoryLabel = nullptr;
+    DLabel *m_swapLabel = nullptr;
+
 };
 
 // Draws one application row — icon, name, paused tag and right-aligned memory
@@ -807,11 +868,12 @@ public:
         vbox->setContentsMargins(16, 8, 16, 12);
         vbox->setSpacing(12);
 
-        vbox->addWidget(new AlertBanner(
+        m_banner = new AlertBanner(
                 tr("Not enough memory"),
                 tr("To keep the desktop responsive, applications using the most memory were "
                    "paused. Resume the ones you still need, or force quit them."),
-                central));
+                central);
+        vbox->addWidget(m_banner);
 
         m_view = new DListView(central);
         m_view->setFrameShape(QFrame::NoFrame);
@@ -923,6 +985,7 @@ public:
         m_view = nullptr;
         m_model = nullptr;
         m_listPages = nullptr;
+        m_banner = nullptr;
         m_resumeBtn = nullptr;
         m_killBtn = nullptr;
         central->deleteLater();
@@ -984,6 +1047,9 @@ public:
         }
 
         const SystemMemory memory = systemMemory();
+        // The dialog reports what the pressure policy sees, so keep the latest
+        // sample for the alert's memory and swap lines.
+        m_memory = memory;
         const bool pressureSampling = pressure > PRESSURE_LIMIT;
         const bool swapSampling = systemSwapPressure(memory);
         bool appSampleValid = true;
@@ -1130,10 +1196,18 @@ public:
         return index.isValid() ? index.data(CGROUP_ROLE).toString() : QString();
     }
 
+    void refreshStatus()
+    {
+        if (m_banner)
+            m_banner->setMemoryStatus(memoryLine(m_memory), swapLine(m_memory));
+    }
+
+
     void refresh()
     {
         if (!m_view || !m_model)
             return;
+        refreshStatus();
         const QString selected = currentCgroup();
 
         auto procs = m_apps;
@@ -1181,6 +1255,9 @@ protected:
         // A window that appears again belongs to a new pressure episode: ask
         // again before this one closes with applications still paused.
         m_closeConfirmed = false;
+        // Read the machine state once for the first paint; the poll keeps it up
+        // to date from then on.
+        m_memory = systemMemory();
         sampleApps();
         refresh();
         DMainWindow::showEvent(event);
@@ -1246,6 +1323,7 @@ private:
     DListView *m_view = nullptr;
     QStandardItemModel *m_model = nullptr;
     QStackedLayout *m_listPages = nullptr;
+    AlertBanner *m_banner = nullptr;
     DPushButton *m_resumeBtn = nullptr;
     DPushButton *m_killBtn = nullptr;
     QTimer *m_timer;
@@ -1254,6 +1332,7 @@ private:
     QSet<QString> m_whitelist;
     QHash<QString, quint64> m_lastPgscan;
     quint64 m_lastUserPgscan = 0;
+    SystemMemory m_memory;
     bool m_hasLastUserPgscan = false;
     bool m_shutdownRequested = false;
     bool m_confirmingClose = false;
