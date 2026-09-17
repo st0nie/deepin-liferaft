@@ -1,3 +1,19 @@
+deepin-liferaft (0.2.0) unstable; urgency=medium
+
+  * Restyle the dialog in native Deepin style: a rounded alert banner with the
+    warning badge, a DListView with the alternating row shading of Deepin
+    System Monitor, and a separator above right-aligned Resume and Force Quit
+    buttons, all following the DTK palette and light/dark theme.
+  * Label the application list columns with Application and Memory.
+  * Show the machine's total and available memory and its swap under the alert,
+    refreshed with every poll and taken from the same /proc/meminfo sample as
+    the pressure decision.
+  * Ask for confirmation before closing the window while applications are still
+    paused, so a stray close cannot silently resume them; SIGTERM and SIGINT
+    still thaw without asking.
+
+ -- Ston Jia <ston.jia@outlook.com>  Thu, 17 Sep 2026 12:02:27 +0800
+
 deepin-liferaft (0.1.1) unstable; urgency=medium
 
   * Install /etc/default/grub.d/90_deepin_liferaft.cfg to enable kernel PSI
